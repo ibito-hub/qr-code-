@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registre de présences</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; justify-content: center; padding: 2rem 1rem; }
+  .wrapper { width: 100%; max-width: 480px; }
+  .card { background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 0.25rem; color: #111; }
+  .sub { font-size: 14px; color: #666; margin-bottom: 1.25rem; }
+  .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+  #qr-container { background: white; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; display: inline-block; }
+  #qr-container table { border-collapse: collapse; }
+  #qr-container td { width: 8px; height: 8px; }
+  .sim-btn { background: #eef4ff; color: #2563eb; border: 1px solid #bfdbfe; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
+  .sim-btn:hover { background: #dbeafe; }
+  .hidden { display: none; }
+  label { font-size: 13px; color: #555; display: block; margin: 1rem 0 4px; }
+  input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; outline: none; }
+  input[type=text]:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  .btn-row { display: flex; gap: 8px; margin-top: 1.25rem; }
+  .btn-primary { flex: 1; background: #111; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 15px; cursor: pointer; font-weight: 500; }
+  .btn-primary:hover { background: #333; }
+  .btn-secondary { background: white; color: #111; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  .btn-secondary:hover { background: #f5f5f5; }
+  .success-icon { font-size: 48px; text-align: center; }
+  .success-name { font-size: 18px; font-weight: 600; text-align: center; margin: 0.5rem 0 0.25rem; color: #111; }
+  .success-msg { font-size: 13px; color: #16a34a; text-align: center; margin-bottom: 1rem; font-weight: 500; }
+  .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .count { font-size: 13px; color: #888; }
+  .actions { display: flex; gap: 8px; margin-bottom: 0.75rem; }
+  .btn-sm { font-size: 12px; padding: 5px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; }
+  .btn-sm-outline { background: white; border: 1px solid #d1d5db; color: #555; }
+  .btn-sm-outline:hover { background: #f5f5f5; }
+  .btn-sm-dark { background: #111; border: none; color: white; }
+  .btn-sm-dark:hover { background: #333; }
+  .entries-list { max-height: 220px; overflow-y: auto; }
+  .entry-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .entry-row:last-child { border-bottom: none; }
+  .entry-num { background: #f3f4f6; border-radius: 99px; padding: 2px 8px; font-size: 11px; color: #888; flex-shrink: 0; }
+  .entry-name { font-weight: 600; color: #111; flex: 1; }
+  .entry-time { color: #aaa; font-size: 11px; flex-shrink: 0; }
+  .empty { color: #bbb; text-align: center; padding: 1.5rem 0; font-size: 14px; }
+  .steps { display: flex; align-items: center; gap: 6px; margin-bottom: 1.25rem; font-size: 12px; }
+  .step { color: #bbb; display: flex; align-items: center; gap: 4px; }
+  .step.active { color: #111; font-weight: 600; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #e0e0e0; }
+  .step.active .dot { background: #111; }
+  .arrow { color: #ddd; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="card">
+    <div class="steps">
+      <div class="step active" id="s1"><div class="dot"></div> QR Code</div>
+      <span class="arrow">›</span>
+      <div class="step" id="s2"><div class="dot"></div> Formulaire</div>
+      <span class="arrow">›</span>
+      <div class="step" id="s3"><div class="dot"></div> Confirmé</div>
+    </div>
+
+    <!-- QR Section -->
+    <div id="sec-qr">
+      <h1>QR code de présence</h1>
+      <p class="sub">Scannez ce code pour enregistrer votre présence</p>
+      <div class="qr-wrap">
+        <div id="qr-container"></div>
+        <button class="sim-btn" onclick="showForm()">📱 Simuler un scan</button>
+      </div>
+    </div>
+
+    <!-- Form Section -->
+    <div id="sec-form" class="hidden">
+      <h1>Enregistrement</h1>
+      <p class="sub">Saisissez vos informations pour valider votre présence.</p>
+      <label for="inp-prenom">Prénom</label>
+      <input type="text" id="inp-prenom" placeholder="ex. Marie" autocomplete="off" />
+      <label for="inp-nom">Nom</label>
+      <input type="text" id="inp-nom" placeholder="ex. Dupont" autocomplete="off" />
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="showQR()">Annuler</button>
+        <button class="btn-primary" onclick="submitForm()">✓ Valider</button>
+      </div>
+    </div>
+
+    <!-- Success Section -->
+    <div id="sec-ok" class="hidden">
+      <div class="success-icon">✅</div>
+      <p class="success-name" id="ok-name"></p>
+      <p class="success-msg">Présence enregistrée avec succès</p>
+      <div class="btn-row" style="justify-content:center;">
+        <button class="btn-secondary" onclick="showQR()">← Retour</button>
+        <button class="btn-primary" style="flex:none;" onclick="downloadExcel()">📥 Télécharger Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Registre -->
+  <div class="card">
+    <div class="top-row">
+      <h1 style="font-size:16px;">Registre des présences</h1>
+      <span class="count" id="cnt">0 entrée(s)</span>
+    </div>
+    <div class="actions">
+      <button class="btn-sm btn-sm-outline" onclick="clearAll()">🗑 Vider</button>
+      <button class="btn-sm btn-sm-dark" onclick="downloadExcel()">⬇ Télécharger .xlsx</button>
+    </div>
+    <div class="entries-list" id="list">
+      <div class="empty">Aucune présence enregistrée.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── QR Code generator (pur JS, sans dépendance externe) ──────────────────────
+var QR = (function(){
+  var GF=[];var LOG=[];(function(){var x=1;for(var i=0;i<256;i++){GF[i]=x;LOG[x]=i;x<<=1;if(x>255)x^=0x11d;}})();
+  function gfMul(a,b){if(a===0||b===0)return 0;return GF[(LOG[a]+LOG[b])%255];}
+  function polyMul(p,q){var r=new Array(p.length+q.length-1).fill(0);for(var i=0;i<p.length;i++)for(var j=0;j<q.length;j++)r[i+j]^=gfMul(p[i],q[j]);return r;}
+  function polyMod(msg,gen){var out=msg.slice();for(var i=0;i<msg.length;i++){var c=out[i];if(c!==0)for(var j=1;j<gen.length;j++)out[i+j]^=gfMul(gen[j],c);}return out.slice(msg.length);}
+  function genPoly(n){var g=[1];for(var i=0;i<n;i++)g=polyMul(g,[1,GF[i]]);return g;}
+
+  var ALPHANUMERIC='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+  function encodeAlphanumeric(s){var bits=[];var i=0;while(i<s.length-1){var v=ALPHANUMERIC.indexOf(s[i])*45+ALPHANUMERIC.indexOf(s[i+1]);for(var b=10;b>=0;b--)bits.push((v>>b)&1);i+=2;}if(i<s.length){var v=ALPHANUMERIC.indexOf(s[i]);for(var b=5;b>=0;b--)bits.push((v>>b)&1);}return bits;}
+  function encodeNumeric(s){var bits=[];var i=0;while(i<s.length){var grp=s.slice(i,i+3);var v=parseInt(grp,10);var len=grp.length===3?10:grp.length===2?7:4;for(var b=len-1;b>=0;b--)bits.push((v>>b)&1);i+=3;}return bits;}
+  function encodeByte(s){var bits=[];for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);for(var b=7;b>=0;b--)bits.push((c>>b)&1);}return bits;}
+
+  // Version 2 (25x25), EC level M, 22 data codewords, 22 EC codewords
+  function generate(text){
+    // Use byte encoding for max compatibility
+    var mode=[0,1,0,0]; // byte
+    var txt=unescape(encodeURIComponent(text));
+    var charCount=[];for(var b=7;b>=0;b--)charCount.push((txt.length>>b)&1);
+    var data=mode.concat(charCount).concat(encodeByte(txt));
+    // Terminator + padding to 176 bits (22 bytes)
+    var target=176;
+    for(var i=0;i<4&&data.length<target;i++)data.push(0);
+    while(data.length%8!==0)data.push(0);
+    var pad=[0xEC,0x11];var pi=0;
+    while(data.length<target){for(var b=7;b>=0;b--)data.push((pad[pi%2]>>b)&1);pi++;}
+    // To bytes
+    var bytes=[];for(var i=0;i<data.length;i+=8){var v=0;for(var b=0;b<8;b++)v=(v<<1)|data[i+b];bytes.push(v);}
+    // EC
+    var gen=genPoly(22);
+    var ec=polyMod(bytes,gen);
+    var full=bytes.concat(ec);
+    // Build 25x25 matrix
+    var N=25;var mat=[];var func=[];
+    for(var r=0;r<N;r++){mat.push(new Array(N).fill(0));func.push(new Array(N).fill(false));}
+    function setFunc(r,c,v){mat[r][c]=v;func[r][c]=true;}
+    // Finder patterns
+    function finder(r,c){for(var dr=0;dr<7;dr++)for(var dc=0;dc<7;dc++){var v=(dr===0||dr===6||dc===0||dc===6||( dr>=2&&dr<=4&&dc>=2&&dc<=4))?1:0;setFunc(r+dr,c+dc,v);}}
+    finder(0,0);finder(0,18);finder(18,0);
+    // Separators
+    for(var i=0;i<8;i++){setFunc(7,i,0);setFunc(i,7,0);setFunc(7,N-1-i,0);setFunc(i,N-8,0);setFunc(N-8,i,0);setFunc(N-1-i,7,0);}
+    // Timing
+    for(var i=8;i<17;i++){setFunc(6,i,i%2===0?1:0);setFunc(i,6,i%2===0?1:0);}
+    // Dark module
+    setFunc(13,8,1);
+    // Alignment pattern (version 2: center at 18,18)
+    var ac=18;for(var dr=-2;dr<=2;dr++)for(var dc=-2;dc<=2;dc++){var v=(Math.abs(dr)===2||Math.abs(dc)===2||( dr===0&&dc===0))?1:0;setFunc(ac+dr,ac+dc,v);}
+    // Format info (EC=M, mask=2 → 010)
+    var fmt=[1,0,1,1,0,0,0,1,1,1,0,0,1,1,0]; // precomputed for M+mask2
+    var fp=[[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+    var fp2=[[8,N-1],[8,N-2],[8,N-3],[8,N-4],[8,N-5],[8,N-6],[8,N-7],[N-8,8],[N-7,8],[N-6,8],[N-5,8],[N-4,8],[N-3,8],[N-2,8],[N-1,8]];
+    for(var i=0;i<15;i++){setFunc(fp[i][0],fp[i][1],fmt[i]);setFunc(fp2[i][0],fp2[i][1],fmt[i]);}
+    // Place data bits with mask 2 (r%3==0)
+    var bi=0;var allBits=[];for(var i=0;i<full.length;i++)for(var b=7;b>=0;b--)allBits.push((full[i]>>b)&1);
+    var col=N-1;var goUp=true;
+    while(col>0){
+      if(col===6)col--;
+      for(var row=0;row<N;row++){var r=goUp?N-1-row:row;
+        for(var dc=0;dc<2;dc++){var c=col-dc;
+          if(!func[r][c]&&bi<allBits.length){var mask=(r%3===0)?1:0;mat[r][c]=allBits[bi]^mask;bi++;}}}
+      col-=2;goUp=!goUp;}
+    return mat;
+  }
+
+  return {generate:generate};
+})();
+
+// ── App logic ────────────────────────────────────────────────────────────────
+var entries = [];
+
+function renderQR(text) {
+  var mat = QR.generate(text);
+  var N = mat.length;
+  var table = document.createElement('table');
+  table.style.borderCollapse = 'collapse';
+  for (var r = 0; r < N; r++) {
+    var tr = document.createElement('tr');
+    for (var c = 0; c < N; c++) {
+      var td = document.createElement('td');
+      td.style.width = '8px';
+      td.style.height = '8px';
+      td.style.background = mat[r][c] ? '#000' : '#fff';
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  var container = document.getElementById('qr-container');
+  container.innerHTML = '';
+  container.appendChild(table);
+}
+
+function setStep(n) {
+  [1,2,3].forEach(function(i) {
+    var el = document.getElementById('s'+i);
+    el.classList.toggle('active', i===n);
+  });
+}
+function showQR() {
+  document.getElementById('sec-form').classList.add('hidden');
+  document.getElementById('sec-ok').classList.add('hidden');
+  document.getElementById('sec-qr').classList.remove('hidden');
+  setStep(1);
+}
+function showForm() {
+  document.getElementById('sec-qr').classList.add('hidden');
+  document.getElementById('sec-ok').classList.add('hidden');
+  document.getElementById('sec-form').classList.remove('hidden');
+  setStep(2);
+  setTimeout(function(){ document.getElementById('inp-prenom').focus(); }, 50);
+}
+function submitForm() {
+  var prenom = document.getElementById('inp-prenom').value.trim();
+  var nom = document.getElementById('inp-nom').value.trim();
+  if (!prenom || !nom) { alert('Veuillez remplir le prénom et le nom.'); return; }
+  var now = new Date();
+  entries.push({
+    num: entries.length + 1,
+    prenom: prenom,
+    nom: nom,
+    date: now.toLocaleDateString('fr-FR'),
+    heure: now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})
+  });
+  document.getElementById('inp-prenom').value = '';
+  document.getElementById('inp-nom').value = '';
+  document.getElementById('ok-name').textContent = prenom + ' ' + nom.toUpperCase();
+  document.getElementById('sec-form').classList.add('hidden');
+  document.getElementById('sec-ok').classList.remove('hidden');
+  setStep(3);
+  renderList();
+}
+function renderList() {
+  var list = document.getElementById('list');
+  document.getElementById('cnt').textContent = entries.length + ' entrée' + (entries.length > 1 ? 's' : '');
+  if (!entries.length) { list.innerHTML = '<div class="empty">Aucune présence enregistrée.</div>'; return; }
+  list.innerHTML = entries.slice().reverse().map(function(e) {
+    return '<div class="entry-row"><span class="entry-num">#'+e.num+'</span><span class="entry-name">'+e.prenom+' '+e.nom.toUpperCase()+'</span><span class="entry-time">'+e.date+' '+e.heure+'</span></div>';
+  }).join('');
+}
+function clearAll() {
+  if (!entries.length) return;
+  if (confirm('Vider le registre ?')) { entries = []; renderList(); }
+}
+function downloadExcel() {
+  if (!entries.length) { alert('Aucune présence à exporter.'); return; }
+  var data = [['#','Prénom','Nom','Date','Heure']];
+  entries.forEach(function(e){ data.push([e.num, e.prenom, e.nom, e.date, e.heure]); });
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:5},{wch:18},{wch:18},{wch:14},{wch:10}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Présences');
+  XLSX.writeFile(wb, 'presences_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+// Génère le QR code vers cette même page
+var pageUrl = window.location.href.split('?')[0];
+renderQR(pageUrl.length > 20 ? pageUrl : 'https://presences.app/scan');
+</script>
+</body>
+</html>
